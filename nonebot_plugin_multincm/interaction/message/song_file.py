@@ -140,6 +140,96 @@ async def send_song_media_platform_specific(
     return await processors[adapter_name](info, as_file=as_file)
 
 
+async def send_song_voice_with_card(song: "BaseSong"):
+    """
+    在发送音乐卡片后同步发送语音消息
+    
+    该函数用于在QQ平台环境下，当用户点歌成功后，除了发送音乐卡片外，
+    还同步发送该歌曲的语音内容，提升用户体验。
+    
+    参数:
+        song: 歌曲对象，包含歌曲信息和播放链接
+        
+    异常处理:
+        - 网络波动导致下载失败时会记录警告日志
+        - FFmpeg不可用时会抛出异常并由调用方处理
+        - 语音编码失败时会记录详细错误信息
+    """
+    info = await song.get_info()
+    try:
+        await download_song(info)
+    except Exception as e:
+        log_exception_warning(e, f"Failed to download song {song} for voice")
+        return None
+
+    # 根据平台选择合适的发送方式
+    bot = current_bot.get()
+    adapter_name = bot.adapter.get_name()
+    
+    try:
+        if adapter_name == "OneBot V11":
+            # OneBot V11 使用原生语音消息
+            return await _send_song_voice_onebot_v11(info)
+        elif adapter_name == "QQ":
+            # QQ 适配器使用 silk 格式语音
+            return await send_song_voice_silk_uni_msg(info)
+        else:
+            # 其他平台使用通用语音消息
+            return await send_song_voice_silk_uni_msg(info)
+    except Exception as e:
+        log_exception_warning(e, f"Failed to send voice for {song}")
+        return None
+
+
+async def _send_song_voice_onebot_v11(info: "GeneralSongInfo"):
+    """
+    使用 OneBot V11 协议发送语音消息
+    
+    将音乐文件转换为 silk 格式后，通过 OneBot V11 的 send_msg API 发送语音。
+    支持群聊和私聊两种场景。
+    
+    参数:
+        info: 歌曲信息对象
+        
+    返回:
+        Receipt 对象或 None
+    """
+    from nonebot.adapters.onebot.v11 import (
+        Bot as OB11Bot,
+        GroupMessageEvent,
+        MessageSegment,
+        PrivateMessageEvent,
+    )
+
+    bot = cast("OB11Bot", current_bot.get())
+    event = current_event.get()
+
+    if not isinstance(event, GroupMessageEvent | PrivateMessageEvent):
+        raise TypeError("Event not supported for voice message")
+
+    # 确保 ffmpeg 可用并转换音频为 silk 格式
+    await ensure_ffmpeg()
+    silk_path = await encode_silk(get_download_path(info))
+    
+    # 读取 silk 文件内容
+    voice_data = silk_path.read_bytes()
+    
+    # 构建语音消息段
+    voice_segment = MessageSegment.record(file=voice_data)
+    
+    # 根据事件类型发送语音
+    if isinstance(event, PrivateMessageEvent):
+        return await bot.send_private_msg(
+            user_id=event.user_id,
+            message=voice_segment,
+        )
+    else:
+        return await bot.send_group_msg(
+            group_id=event.group_id,
+            message=voice_segment,
+        )
+
+
 async def send_song_media(song: "BaseSong", as_file: bool | None = None):
     if as_file is None:
         as_file = config.send_as_file

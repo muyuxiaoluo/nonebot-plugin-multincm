@@ -1,5 +1,6 @@
 from cookit.loguru import warning_suppress
 from cookit.nonebot.alconna import RecallContext
+from nonebot import logger
 from nonebot_plugin_alconna.uniseg import UniMessage
 
 from ...config import config
@@ -7,7 +8,7 @@ from ...data_source import BasePlaylist, BaseSong
 from ...utils import is_song_card_supported
 from ..cache import set_cache
 from .song_card import send_song_card_msg
-from .song_file import send_song_media
+from .song_file import send_song_media, send_song_voice_with_card
 
 SONG_TIP = "\n使用指令 `direct` 获取播放链接"
 PLAYLIST_TIP = "\n使用指令 `resolve` 选择内容播放"
@@ -39,6 +40,10 @@ async def _send_song_without_cache(song: BaseSong):
     if config.send_as_card and is_song_card_supported():
         with warning_suppress(f"Send {song} card failed"):
             await send_song_card_msg(song)
+            # 如果配置了同步发送语音，则在卡片发送成功后发送语音
+            if config.send_voice_with_card:
+                with warning_suppress(f"Send {song} voice with card failed"):
+                    await send_song_voice_with_card(song)
             return
         if config.ignore_send_card_failure:
             return

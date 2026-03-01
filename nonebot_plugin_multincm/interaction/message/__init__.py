@@ -8,4 +8,5 @@ from .song_card import (
 from .song_file import (
     download_song as download_song,
     send_song_media as send_song_media,
+    send_song_voice_with_card as send_song_voice_with_card,
 )

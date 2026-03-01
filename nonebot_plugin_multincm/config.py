@@ -48,6 +48,7 @@ class ConfigModel(BaseModel):
     send_media: bool = True
     send_media_no_unimsg_fallback: bool = True
     send_as_file: bool = False
+    send_voice_with_card: bool = False
     ob_v11_local_mode: bool = True
     ob_v11_ignore_send_file_failure: bool = False
 
